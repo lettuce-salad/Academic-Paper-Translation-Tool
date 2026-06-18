@@ -1,0 +1,10 @@
+# DeepL API設定
+DEEPL_API_KEY=your_deepl_api_key_here
+
+# Google Cloud Translation API設定
+GOOGLE_PROJECT_ID=your_google_project_id_here
+GOOGLE_APPLICATION_CREDENTIALS=/path/to/credentials.json
+
+# Ollama設定
+OLLAMA_MODEL=qwen2.5:7b-instruct-q5_K_M
+OLLAMA_HOST=http://localhost:11434
