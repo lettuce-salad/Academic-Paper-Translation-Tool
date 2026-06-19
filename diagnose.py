@@ -1,202 +1,200 @@
 #!/usr/bin/env python3
 """
-翻訳デバッグスクリプト
-翻訳エンジンが正常に動作しているか確認する
+診断スクリプト
+システムの状態を確認
 """
 import sys
 import os
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent))
+print("="*60)
+print("学術論文翻訳システム v2.0 - 診断")
+print("="*60)
+print()
+
+# 1. Pythonバージョン
+print("📌 Pythonバージョン:")
+print(f"   {sys.version}")
+print()
+
+# 2. 必要なパッケージ
+print("📦 必要なパッケージ:")
+
+packages = {
+    "PyMuPDF": "fitz",
+    "deepl": "deepl",
+    "google-cloud-translate": "google.cloud.translate_v3",
+    "ollama": "ollama",
+    "python-dotenv": "dotenv"
+}
+
+for display_name, import_name in packages.items():
+    try:
+        if "." in import_name:
+            parts = import_name.split(".")
+            mod = __import__(parts[0])
+            for part in parts[1:]:
+                mod = getattr(mod, part)
+        else:
+            __import__(import_name)
+        print(f"   ✅ {display_name}")
+    except ImportError:
+        print(f"   ❌ {display_name} (未インストール)")
+print()
+
+# 3. Ollamaの状態
+print("🤖 Ollama:")
 
 try:
-    from dotenv import load_dotenv
-    load_dotenv()
+    import ollama
+    
+    # モデル一覧を取得
+    try:
+        models = ollama.list()
+        print(f"   ✅ Ollamaサーバー: 起動中")
+        print(f"   📋 利用可能なモデル:")
+        
+        if hasattr(models, 'models') and models.models:
+            for model in models.models:
+                model_name = model.model if hasattr(model, 'model') else str(model)
+                print(f"      - {model_name}")
+        elif isinstance(models, dict) and 'models' in models:
+            for model in models['models']:
+                model_name = model.get('name', model.get('model', str(model)))
+                print(f"      - {model_name}")
+        else:
+            print(f"      (モデル情報の取得に失敗)")
+            print(f"      詳細: {models}")
+    
+    except Exception as e:
+        print(f"   ❌ Ollamaサーバー: 停止中")
+        print(f"   エラー: {e}")
+        print()
+        print(f"   解決方法:")
+        print(f"   1. 別のターミナルで 'ollama serve' を実行")
+        print(f"   2. モデルをダウンロード:")
+        print(f"      ollama pull qwen2.5:7b-instruct-q5_K_M")
+
 except ImportError:
-    pass
+    print(f"   ❌ Ollamaパッケージがインストールされていません")
+    print(f"   インストール: pip install ollama")
 
+print()
 
-def test_deepl():
-    """DeepLのテスト"""
-    api_key = os.environ.get("DEEPL_API_KEY", "")
-    
-    if not api_key:
-        print("❌ DEEPL_API_KEY が設定されていません")
-        return False
-    
-    print(f"🔑 DeepL APIキー: {api_key[:8]}...")
-    
-    try:
-        import deepl
-        client = deepl.Translator(api_key)
-        
-        # テスト翻訳
-        result = client.translate_text(
-            "Hello, this is a test.",
-            source_lang="EN",
-            target_lang="JA"
-        )
-        print(f"✅ DeepL 翻訳成功: {result.text}")
-        
-        # 使用量確認
-        usage = client.get_usage()
-        print(f"   使用量: {usage.character.count:,} / {usage.character.limit:,} 文字")
-        return True
-        
-    except Exception as e:
-        print(f"❌ DeepL エラー: {e}")
-        return False
+# 4. 環境変数
+print("🔑 環境変数:")
 
+env_vars = {
+    "DEEPL_API_KEY": "DeepL APIキー",
+    "GOOGLE_PROJECT_ID": "Google プロジェクトID",
+    "OLLAMA_MODEL": "Ollamaモデル名"
+}
 
-def test_ollama():
-    """Ollamaのテスト"""
-    model = os.environ.get("OLLAMA_MODEL", "qwen2.5:7b-instruct-q5_K_M")
-    
-    try:
-        import ollama
-        
-        print(f"🤖 Ollamaモデル: {model}")
-        
-        response = ollama.generate(
-            model=model,
-            prompt="Translate to Japanese: 'Hello, this is a test.'",
-            options={"temperature": 0.1, "num_predict": 100}
-        )
-        
-        print(f"✅ Ollama 翻訳成功: {response['response'].strip()}")
-        return True
-        
-    except Exception as e:
-        print(f"❌ Ollama エラー: {e}")
-        return False
+for var, description in env_vars.items():
+    value = os.getenv(var)
+    if value:
+        # APIキーは一部のみ表示
+        if "KEY" in var and len(value) > 10:
+            display_value = value[:8] + "..." + value[-4:]
+        else:
+            display_value = value
+        print(f"   ✅ {var}: {display_value}")
+    else:
+        print(f"   ⚠️  {var}: 未設定")
 
+print()
 
-def test_pipeline_translation(pdf_path: str = None):
-    """パイプラインの翻訳テスト（小さなテキストで）"""
-    print("\n🧪 翻訳エンジン直接テスト...")
-    
-    try:
-        from src.translation.translator import TranslationEngine
-        
-        translator = TranslationEngine()
-        
-        test_text = """
-【段落1】
-Large networks often exhibit a certain structure, where nodes form strongly interconnected communities.
+# 5. 用語辞書
+print("📖 用語辞書:")
 
-【段落2】
-The substantial progress in practical algorithms for satisfiability has opened up new possibilities.
-"""
-        
-        print("入力テキスト:")
-        print(test_text)
-        print()
-        
-        result = translator.translate(test_text, show_stats=True)
-        
-        print("翻訳結果:")
-        print(result)
-        print()
-        
-        # 【段落N】が保持されているか確認
-        import re
-        matches = re.findall(r'【(\d+)】', result)
-        print(f"段落番号の保持: {len(matches)}/2 {'✅' if len(matches) == 2 else '❌'}")
-        
-        return True
-        
-    except Exception as e:
-        print(f"❌ 翻訳エンジンエラー: {e}")
-        import traceback
-        traceback.print_exc()
-        return False
-
-
-def check_structure_json(json_path: str):
-    """structure.jsonの翻訳状況を確認"""
+glossary_path = Path("config/glossary.json")
+if glossary_path.exists():
     import json
-    
-    json_path = Path(json_path)
-    if not json_path.exists():
-        print(f"❌ {json_path} が見つかりません")
-        return
-    
-    with open(json_path, encoding='utf-8') as f:
-        data = json.load(f)
-    
-    print(f"\n📊 {json_path} の翻訳状況:")
-    
-    total = 0
-    translated = 0
-    untranslated_samples = []
-    
-    for page in data.get("pages", []):
-        for block in page.get("blocks", []):
-            if block.get("type") in ["paragraph", "abstract", "heading1", "heading2", "heading3", "caption", "title"]:
-                total += 1
-                if block.get("is_translated"):
-                    translated += 1
-                else:
-                    if len(untranslated_samples) < 5:
-                        untranslated_samples.append(block.get("content", "")[:60])
-    
-    print(f"   翻訳済み: {translated}/{total} ({translated/max(total,1)*100:.0f}%)")
-    
-    if untranslated_samples:
-        print(f"\n   未翻訳サンプル:")
-        for s in untranslated_samples:
-            print(f"   - {s}")
+    with open(glossary_path, 'r', encoding='utf-8') as f:
+        glossary = json.load(f)
+    print(f"   ✅ config/glossary.json: {len(glossary)}語")
+else:
+    print(f"   ⚠️  config/glossary.json: 見つかりません")
 
+print()
 
-def main():
-    print("="*60)
-    print("翻訳デバッグツール")
-    print("="*60)
-    print()
-    
-    # 1. 環境確認
-    print("1️⃣  翻訳エンジンの確認")
-    print("-"*40)
-    
-    deepl_ok = test_deepl()
-    print()
-    ollama_ok = test_ollama()
-    print()
-    
-    if not deepl_ok and not ollama_ok:
-        print("❌ 利用可能な翻訳エンジンがありません！")
-        print()
-        print("解決方法:")
-        print("  A. DeepLを使う場合: .envに DEEPL_API_KEY=your_key を追加")
-        print("  B. Ollamaを使う場合: ollama serve を別ターミナルで実行")
-        return 1
-    
-    # 2. パイプラインテスト
-    print("\n2️⃣  翻訳パイプラインのテスト")
-    print("-"*40)
-    pipeline_ok = test_pipeline_translation()
-    
-    # 3. JSONの確認（引数があれば）
-    if len(sys.argv) > 1:
-        print("\n3️⃣  翻訳状況の確認")
-        print("-"*40)
-        check_structure_json(sys.argv[1])
-    else:
-        print("\n💡 翻訳済みJSONを確認するには:")
-        print("   python debug_translation.py output/論文名/structure.json")
-    
-    print()
-    print("="*60)
-    if pipeline_ok:
-        print("✅ 翻訳エンジンは正常です")
-        print()
-        print("翻訳を実行するには:")
-        print("   python main.py paper.pdf --translate --page-mode")
-    else:
-        print("❌ 翻訳エンジンに問題があります（上記のエラーを確認）")
-    
-    return 0
+# 6. 推奨設定
+print("💡 推奨設定:")
+print()
 
+# Ollamaチェック
+try:
+    import ollama
+    try:
+        ollama.list()
+        print("   ✅ Ollamaは正常に動作しています")
+    except:
+        print("   ⚠️  Ollamaサーバーが起動していません")
+        print("      → 別のターミナルで 'ollama serve' を実行してください")
+except ImportError:
+    print("   ❌ Ollamaがインストールされていません")
+    print("      → pip install ollama")
 
-if __name__ == "__main__":
-    sys.exit(main())
+print()
+
+# DeepLチェック
+deepl_key = os.getenv("DEEPL_API_KEY")
+if deepl_key and len(deepl_key) > 10:
+    print("   ✅ DeepL APIキーが設定されています（高品質翻訳が利用可能）")
+else:
+    print("   💡 DeepL APIキーを設定すると翻訳品質が向上します")
+    print("      → https://www.deepl.com/pro-api で無料登録")
+    print("      → export DEEPL_API_KEY='your-key'")
+
+print()
+print("="*60)
+print("診断完了")
+print("="*60)
+print()
+
+# 7. 簡易テスト
+print("🧪 簡易テスト:")
+print()
+
+try:
+    import ollama
+    
+    print("   Ollamaテスト中...")
+    
+    # 利用可能なモデルを取得
+    try:
+        models_response = ollama.list()
+        
+        # モデルリストを取得
+        available_models = []
+        if hasattr(models_response, 'models'):
+            available_models = [m.model if hasattr(m, 'model') else str(m) for m in models_response.models]
+        elif isinstance(models_response, dict) and 'models' in models_response:
+            available_models = [m.get('name', m.get('model', str(m))) for m in models_response['models']]
+        
+        if not available_models:
+            print(f"   ❌ モデルが見つかりません")
+            print(f"   解決方法: ollama pull qwen2.5:7b-instruct-q5_K_M")
+        else:
+            # 最初のモデルでテスト
+            test_model = available_models[0]
+            print(f"   テストモデル: {test_model}")
+            
+            response = ollama.generate(
+                model=test_model,
+                prompt="Translate to Japanese: Hello",
+                options={"num_ctx": 512}
+            )
+            
+            result = response['response'].strip()
+            print(f"   翻訳結果: {result}")
+            print(f"   ✅ Ollama翻訳テスト成功")
+    
+    except Exception as e:
+        print(f"   ❌ Ollamaテスト失敗: {e}")
+
+except ImportError:
+    print(f"   ⚠️  Ollamaがインストールされていないためテストをスキップ")
+
+print()
+print("="*60)

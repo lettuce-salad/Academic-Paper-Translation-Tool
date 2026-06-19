@@ -1,198 +1,92 @@
-#!/usr/bin/env python3
-"""
-学術論文翻訳システム v2.0
-メインエントリーポイント
-"""
-import sys
-import io
-from pathlib import Path
+# 学術論文翻訳システム v2.0
 
-# Windows標準コンソールの絵文字UnicodeEncodeError対策
-if sys.platform == "win32":
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+英語の学術論文PDFを、レイアウト・数式・図表・専門用語を保持したまま日本語に翻訳するツール。
 
-# パスを追加
-sys.path.insert(0, str(Path(__file__).parent))
+> **ライセンス / 利用条件**
+> 本ソフトウェアは**私的利用（個人的な学習・研究目的）に限り**使用できます。
+> 商用利用、再配布、公開サービスへの組み込みは認められません。
+> 翻訳対象の論文の著作権は各権利者に帰属します。利用者は対象論文の利用規約・著作権法を遵守してください。
+> 詳細は [LICENSE](LICENSE) を参照してください。
 
-# 環境変数を読み込み
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except ImportError:
-    print("⚠️  python-dotenvがインストールされていません")
-    print("   インストール: pip install python-dotenv")
+## 特徴
 
-from src.parser.structure_parser import PDFStructureParser
-from src.renderer.layout_renderer import LayoutHTMLRenderer
-from src.renderer.dual_renderer import DualColumnRenderer
-from src.pipeline import TranslationPipeline
+- **構造保持**: PDFの見出し・段落・図表・数式を解析して再現
+- **2段組み対応**: 左段→右段の正しい読み順で翻訳
+- **コンテンツ保護**: 数式・引用番号・URL・専門用語を翻訳から保護し、後で復元
+- **3エンジン対応**: DeepL → Google → Ollama のフォールバック
+- **用語辞書**: 225語のML/SAT分野用語を同梱（`config/glossary.json`）
+- **3つの出力形式**: 通常HTML / 2カラム対照 / PDF原文対照
 
+## インストール
 
-def main():
-    """メイン処理"""
-    import argparse
-    
-    parser = argparse.ArgumentParser(
-        description='学術論文翻訳システム v2.0',
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-使用例:
-  # PDF翻訳（完全版）
-  python main.py input.pdf --translate
-  
-  # 用語辞書を指定して翻訳
-  python main.py input.pdf --translate --glossary config/glossary.json
-  
-  # 構造解析のみ（翻訳なし）
-  python main.py input.pdf --parse-only
-  
-  # JSONから直接HTML生成
-  python main.py --from-json structure.json
-  
-環境変数:
-  DEEPL_API_KEY       DeepL APIキー
-  GOOGLE_PROJECT_ID   Google Cloud プロジェクトID
-  OLLAMA_MODEL        Ollamaモデル名
-        """
-    )
-    
-    parser.add_argument('input', help='入力ファイル（PDF または JSON）')
-    parser.add_argument('--translate', '-t', action='store_true',
-                       help='翻訳を実行（デフォルトはレイアウト表示のみ）')
-    parser.add_argument('--page-mode', action='store_true',
-                       help='ページ単位で翻訳（より自然な翻訳）')
-    parser.add_argument('--dual-column', action='store_true',
-                       help='原文・翻訳を2カラムで並列表示')
-    parser.add_argument('--side-by-side', action='store_true',
-                       help='左:PDF原文画像 / 右:翻訳テキスト の並列表示')
-    parser.add_argument('--parse-only', action='store_true', 
-                       help='構造解析のみ（JSONを出力）')
-    parser.add_argument('--from-json', action='store_true',
-                       help='JSONから読み込み')
-    parser.add_argument('--pdf', default=None,
-                       help='--from-json --side-by-side 時の元PDFパス')
-    parser.add_argument('--scale', type=float, default=0.8,
-                       help='HTML表示スケール（デフォルト: 0.8）')
-    parser.add_argument('--output', '-o', help='出力HTMLファイル名')
-    parser.add_argument('--glossary', '-g', help='用語辞書ファイル（JSON）')
-    parser.add_argument('--deepl-key', help='DeepL APIキー')
-    parser.add_argument('--google-project', help='Google Cloud プロジェクトID')
-    parser.add_argument('--ollama-model', default='qwen2.5:7b-instruct-q5_K_M',
-                       help='Ollamaモデル名')
-    
-    args = parser.parse_args()
-    
-    input_path = Path(args.input)
-    
-    if not input_path.exists():
-        print(f"エラー: {input_path} が見つかりません")
-        return 1
-    
-    print("="*60)
-    print("学術論文翻訳システム v2.0")
-    print("="*60)
-    print()
-    
-    # 翻訳モード
-    if args.translate and not args.from_json:
-        pipeline = TranslationPipeline(
-            deepl_api_key=args.deepl_key,
-            google_project_id=args.google_project,
-            ollama_model=args.ollama_model,
-            glossary_path=args.glossary,
-        )
-        
-        pipeline.translate_pdf(
-            pdf_path=str(input_path),
-            output_html=args.output,
-            scale=args.scale,
-            page_mode=args.page_mode
-        )
-        
-        return 0
-    
-    # JSONから読み込み
-    if args.from_json:
-        from src.parser.pdf_document import PDFDocument
+```bash
+pip install -r requirements.txt
+```
 
-        print(f"📖 JSONを読み込み中: {input_path}")
-        doc = PDFDocument.from_json(str(input_path))
+翻訳エンジンは少なくとも1つが必要です。
 
-        # 出力ディレクトリ
-        output_dir = input_path.parent
+- **DeepL**（推奨）: `.env` に `DEEPL_API_KEY=your_key` を記述（→ `SETUP_DEEPL.md`）
+- **Ollama**（ローカル）: `ollama serve` を起動
 
-        if args.side_by_side:
-            # PDFパスの解決（--pdf優先 → 自動検索）
-            if args.pdf:
-                pdf_path = args.pdf
-            else:
-                pdf_candidates = list(output_dir.parent.glob("*.pdf")) + list(Path(".").glob("*.pdf"))
-                if not pdf_candidates:
-                    print("❌ PDFファイルが見つかりません。--pdf パスを指定してください")
-                    return 1
-                pdf_path = str(pdf_candidates[0])
-                print(f"   PDFを自動検出: {pdf_path}")
-            output_path = args.output or str(output_dir / "side_by_side.html")
-            from src.renderer.side_by_side_renderer import SideBySideRenderer
-            renderer = SideBySideRenderer(pdf_path)
-            renderer.render(doc, output_path)
-            print(f"✅ 完了: {output_path}")
-        elif args.dual_column:
-            output_path = args.output or str(output_dir / "dual.html")
-            renderer = DualColumnRenderer()
-            renderer.render(doc, output_path)
-            print(f"✅ 2カラムHTML生成完了: {output_path}")
-        else:
-            output_path = args.output or str(output_dir / "translated.html")
-            renderer = LayoutHTMLRenderer(scale=args.scale)
-            # PDFパスを渡して図表画像切り出しを有効化
-            if args.pdf:
-                renderer.pdf_path = args.pdf
-            elif (output_dir.parent / input_path.name.replace(".json", ".pdf")).exists():
-                renderer.pdf_path = str(output_dir.parent / input_path.name.replace(".json", ".pdf"))
-            renderer.render(doc, output_path)
-            print(f"✅ HTML生成完了: {output_path}")
+## 使い方
 
-        return 0
-    
-    # PDFを解析（翻訳なし）
-    print(f"📖 PDFを解析中: {input_path}")
-    parser_obj = PDFStructureParser()
-    doc = parser_obj.parse(str(input_path))
-    
-    stats = doc.get_statistics()
-    print(f"\n📊 統計:")
-    print(f"  ページ数: {stats['page_count']}")
-    print(f"  総ブロック数: {stats['total_blocks']}")
-    print(f"  翻訳対象ブロック: {stats['translatable_blocks']}")
-    print(f"  総文字数: {stats['total_characters']:,}")
-    
-    print(f"\n  ブロックタイプ:")
-    for block_type, count in stats['block_types'].items():
-        print(f"    {block_type}: {count}")
-    
-    # JSONに保存
-    json_path = input_path.stem + "_structure.json"
-    doc.to_json(json_path)
-    print(f"\n💾 構造をJSONに保存: {json_path}")
-    
-    if args.parse_only:
-        return 0
-    
-    # HTML生成（翻訳なし）
-    print(f"\n🎨 HTMLを生成中...")
-    output_path = args.output or input_path.stem + "_layout.html"
-    
-    renderer = LayoutHTMLRenderer(scale=args.scale)
-    renderer.render(doc, output_path)
-    
-    print(f"✅ 完了: {output_path}")
-    print(f"\n💡 ヒント: 翻訳するには --translate オプションを追加してください")
-    print(f"   python main.py {input_path} --translate")
-    
-    return 0
+```bash
+# 翻訳（推奨：ブロック単位・コンテキスト付き）
+python main.py paper.pdf --translate --page-mode --glossary config/glossary.json
+```
 
+出力は `output/<論文名>/` に生成されます。
 
-if __name__ == "__main__":
-    sys.exit(main())
+```
+output/paper/
+├── translated.html      通常表示
+├── side_by_side.html    PDF原文 ↔ 翻訳 対照表示
+└── structure.json       解析結果（再生成・再開に使用）
+```
+
+### その他のコマンド
+
+```bash
+# 構造解析のみ（翻訳しない）
+python main.py paper.pdf --parse-only
+
+# JSONからHTMLを再生成
+python main.py output/paper/structure.json --from-json --side-by-side --pdf paper.pdf
+
+# 中断した翻訳を再開
+python resume.py output/paper/structure.json
+
+# 翻訳エンジンの動作確認
+python debug_translation.py
+```
+
+## テスト
+
+```bash
+pytest tests/
+```
+
+`tests/` には保護機能の対称性・読み順・JSON往復の回帰テストが含まれます。
+
+## ドキュメント
+
+詳細な解説は `docs/` を参照してください。
+
+- `docs/PAGE_MODE_GUIDE.md` — 翻訳モードの解説
+- `docs/CONTEXT_GUIDE.md` — コンテキスト付き翻訳
+- `docs/FIGURE_TABLE_GUIDE.md` — 図表検出
+- `docs/LAYOUT_GUIDE.md` — レイアウト再現
+- `SETUP_DEEPL.md` — DeepL設定
+- `TROUBLESHOOTING.md` — トラブルシューティング
+
+## 既知の制限
+
+- 罫線のない・背景色のない表（空白整形のみ）は検出できない
+- 図中のテキストや数式は英語のまま（図は画像として保持）
+- レイアウトはフロー配置（テキスト重なり防止のため、PDF座標の厳密再現ではない）
+
+## ライセンス
+
+本ソフトウェアは**私的利用に限ります**（個人的な学習・研究目的）。商用利用・再配布・公開サービスへの組み込みは認められません。詳細は [LICENSE](LICENSE) を参照してください。
+
+翻訳対象の論文の著作権は各権利者に帰属します。本ツールの利用にあたっては、対象論文の利用規約および著作権法を遵守してください。

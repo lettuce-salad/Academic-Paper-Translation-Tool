@@ -1,266 +1,414 @@
-# DeepLセットアップガイド
+# トラブルシューティングガイド
 
-## 🎯 目標
+## 🐛 翻訳が途中で止まる
 
-DeepL APIを使って高品質な翻訳を行う
+### 症状
 
----
+```
+🔄 翻訳中...
+   [1/180] paragraph
+   ✅ DeepL使用
+   🔓 復元完了
 
-## 📋 手順
+   [2/180] paragraph
+   ✅ DeepL使用
+   🔓 復元完了
 
-### ステップ1: DeepL APIキーの取得
-
-1. **DeepL Proにアクセス**
-   - https://www.deepl.com/pro-api にアクセス
-
-2. **無料アカウント登録**
-   - 「無料で試す」をクリック
-   - メールアドレスとパスワードを入力
-   - メール認証を完了
-
-3. **APIキーを取得**
-   - ダッシュボードにログイン
-   - 「アカウント」→「APIキー」
-   - APIキーをコピー（例: `abc123de-f456-789g-h012-ijk345lmn678:fx`）
-
-**無料枠**:
-- 月間50万文字まで無料
-- クレジットカード登録不要
+   [3/180] paragraph
+   (ここで止まる)
+```
 
 ---
 
-### ステップ2: .envファイルを作成
+## 🔍 原因と解決方法
 
-#### Windows
+### 原因1: API制限（レート制限）
+
+**症状**: 
+- 数十ブロック翻訳後に止まる
+- エラーメッセージなし
+
+**原因**: 
+- DeepL/GoogleのAPI制限
+- 短時間に大量のリクエスト
+
+**解決方法**:
+
+#### A. 待機時間を増やす
+
+現在のコードを確認:
+```python
+# pipeline.py 内
+time.sleep(0.1)  # 0.1秒待機
+```
+
+より長く:
+```python
+time.sleep(0.5)  # 0.5秒待機
+```
+
+#### B. バッチ処理
 
 ```cmd
-# paper-translator-v2フォルダに移動
-cd paper-translator-v2
-
-# .envファイルを作成
-copy .env.example .env
-
-# メモ帳で開く
-notepad .env
-```
-
-#### Mac/Linux
-
-```bash
-# paper-translator-v2フォルダに移動
-cd paper-translator-v2
-
-# .envファイルを作成
-cp .env.example .env
-
-# エディタで開く
-nano .env
-# または
-code .env
+# 少量ずつ翻訳
+python main.py paper.pdf --translate --max-blocks 50
 ```
 
 ---
 
-### ステップ3: APIキーを設定
+### 原因2: Ollamaのタイムアウト
 
-.envファイルを開いて、以下の行を編集:
+**症状**:
+- 長い段落で止まる
+- CPUが100%になる
 
-**編集前**:
-```
-DEEPL_API_KEY=your_deepl_api_key_here
-```
+**原因**:
+- テキストが長すぎる
+- Ollamaの処理時間がかかる
 
-**編集後**:
-```
-DEEPL_API_KEY=abc123de-f456-789g-h012-ijk345lmn678:fx
-```
+**解決方法**:
 
-↑ あなたのAPIキーに置き換える
-
-**重要**:
-- APIキーは `your_deepl_api_key_here` の部分を完全に置き換える
-- スペースや改行を入れない
-- ダブルクォートで囲まない
-
----
-
-### ステップ4: 保存
-
-- **Windows**: `Ctrl+S` → `Alt+F4`
-- **Mac**: `Cmd+S` → `Cmd+Q`
-- **Linux**: `Ctrl+O` → `Enter` → `Ctrl+X`
-
----
-
-### ステップ5: 確認
+#### A. Ollamaのメモリ設定を確認
 
 ```cmd
-# DeepL診断を実行
+# Ollamaの設定を確認
+ollama show qwen2.5:7b-instruct-q4_K_M
+
+# メモリが足りない場合、小さいモデルを使用
+ollama pull qwen2.5:3b-instruct
+```
+
+#### B. DeepLを使用（推奨）
+
+Ollamaより高速:
+```cmd
+# .envファイルを設定
+DEEPL_API_KEY=your_api_key
+```
+
+---
+
+### 原因3: メモリ不足
+
+**症状**:
+- システム全体が遅くなる
+- Pythonプロセスが落ちる
+
+**原因**:
+- PDFが大きすぎる（100ページ以上）
+- メモリ不足
+
+**解決方法**:
+
+#### A. ページ数を確認
+
+```cmd
+python -c "import fitz; print(len(fitz.open('paper.pdf')))"
+```
+
+100ページ以上の場合、分割:
+```cmd
+# 前半
+python main.py paper.pdf --translate --pages 1-50
+
+# 後半
+python main.py paper.pdf --translate --pages 51-100
+```
+
+---
+
+### 原因4: ネットワーク接続の問題
+
+**症状**:
+- ランダムに止まる
+- エラーメッセージなし
+
+**原因**:
+- インターネット接続が不安定
+- VPNの問題
+
+**解決方法**:
+
+#### A. ネットワークを確認
+
+```cmd
+# DeepL APIに接続できるか確認
 python check_deepl.py
 ```
 
-**期待される出力**:
-```
-====================================================
-DeepL診断
-====================================================
+#### B. ローカルのOllamaを使用
 
-📦 ステップ1: python-dotenvの確認
-   ✅ python-dotenvインストール済み
-   ✅ .envファイルを読み込みました
-
-📦 ステップ2: deeplパッケージの確認
-   ✅ deeplパッケージインストール済み
-
-🔑 ステップ3: 環境変数の確認
-   ✅ DEEPL_API_KEY: abc123de...n678
-
-🧪 ステップ4: DeepL接続テスト
-   ✅ DeepL Translatorオブジェクト作成成功
-   テスト翻訳: 'Hello, world!' → 日本語
-   結果: こんにちは、世界！
-   ✅ DeepL翻訳テスト成功
-
-====================================================
-✅ DeepLは正常に動作しています！
-====================================================
+```cmd
+# Ollamaなら途中で止まりにくい
+python main.py paper.pdf --translate
+# （DeepLをコメントアウト）
 ```
 
 ---
 
-### ステップ6: 翻訳実行
+## 🔄 途中から再開する方法
+
+翻訳が途中で止まった場合、**最初からやり直す必要はありません**。
+
+### ステップ1: 進捗を確認
 
 ```cmd
+# 構造JSONファイルを確認
+dir *_structure.json
+```
+
+### ステップ2: 再開
+
+```cmd
+python resume.py paper_structure.json
+```
+
+**出力**:
+```
+📊 翻訳状況:
+   総ブロック数: 180
+   翻訳済み: 45
+   残り: 135
+
+🔄 残りの135ブロックを翻訳中...
+   [1/135] paragraph
+   ✅ DeepL使用
+   ...
+```
+
+### ステップ3: 自動保存
+
+10ブロックごとに自動保存されます:
+```
+   [10/135] paragraph
+   💾 中間保存中...
+   ✅ 保存完了
+```
+
+もし再度止まっても、`python resume.py` でまた再開できます。
+
+---
+
+## 🛡️ エラーが多発する場合
+
+### 症状
+
+```
+   ⚠️  ブロック 15 の翻訳に失敗: Connection error
+   ⚠️  ブロック 23 の翻訳に失敗: Timeout
+   ⚠️  ブロック 34 の翻訳に失敗: Rate limit
+❌ エラーが多すぎます（11個）
+   翻訳を中断します
+```
+
+### 解決方法
+
+#### 1. エラーログを確認
+
+```cmd
+# どのブロックで失敗したか確認
+python main.py paper.pdf --translate > log.txt 2>&1
+notepad log.txt
+```
+
+#### 2. 問題のあるブロックをスキップ
+
+手動でJSONを編集:
+```json
+{
+  "id": "block_000_0015",
+  "type": "paragraph",
+  "content": "元の英語テキスト",
+  "is_translated": true  // ← これを追加（スキップ）
+}
+```
+
+#### 3. 再実行
+
+```cmd
+python resume.py paper_structure.json
+```
+
+---
+
+## 🐢 翻訳が遅い場合
+
+### 問題: 1ブロック10秒以上かかる
+
+**原因**: Ollamaを使っている
+
+**解決方法**:
+
+#### A. DeepLを使用（推奨）
+
+```cmd
+# .envファイルを設定
+DEEPL_API_KEY=your_api_key
+
+# 翻訳速度: 1ブロック1-2秒
 python main.py paper.pdf --translate
 ```
 
-**期待される出力**:
+#### B. より小さいモデルを使用
+
+```cmd
+# 3Bモデル（より高速）
+ollama pull qwen2.5:3b-instruct
+python main.py paper.pdf --translate --ollama-model qwen2.5:3b-instruct
 ```
-📖 PDFを解析中: paper.pdf
-   ページ数: 10
-   総ブロック数: 245
+
+#### C. GPUを活用
+
+Ollamaサーバーを起動時にGPUを有効化:
+```cmd
+# Windows (NVIDIA GPU)
+set CUDA_VISIBLE_DEVICES=0
+ollama serve
+
+# Mac (Metal)
+# 自動的にGPU使用
+ollama serve
+```
+
+---
+
+## 📊 進捗表示が止まる
+
+### 症状
+
+```
+🔄 翻訳中...
    翻訳対象: 180ブロック
 
-🔄 翻訳中...
-   🔒 保護: 5個 (MATH:2, REF:2, TERM:1)
-   ✅ DeepL使用               ← これが表示されればOK！
-   🔓 復元完了 (使用エンジン: DeepL)
+   [1/180] paragraph
+```
+
+ここで止まって、何も表示されない。
+
+### 原因
+
+翻訳処理中だが、ログが出ていない。
+
+### 解決方法
+
+#### より詳細なログを有効化
+
+`pipeline.py`を編集:
+```python
+# 変更前
+show_stats=(idx < 3)
+
+# 変更後（すべてのブロックでログ表示）
+show_stats=True
+```
+
+または、10ブロックごとに表示:
+```python
+show_stats=(idx % 10 == 0)
 ```
 
 ---
 
-## 🐛 トラブルシューティング
+## 🔧 手動デバッグ
 
-### エラー1: `DEEPL_API_KEY: 未設定`
+### 特定のブロックだけ翻訳
 
-**原因**: .envファイルが作成されていない、または読み込まれていない
+```python
+# test_translation.py
+from dotenv import load_dotenv
+load_dotenv()
 
-**解決方法**:
+from src.translation.translator import TranslationEngine
+
+translator = TranslationEngine()
+
+text = "We propose a novel approach with machine learning."
+
+print("Original:", text)
+result = translator.translate(text, show_stats=True)
+print("Translated:", result)
+```
+
+実行:
 ```cmd
-# .envファイルを確認
-dir .env
-
-# なければ作成
-copy .env.example .env
-notepad .env
+python test_translation.py
 ```
 
----
-
-### エラー2: `DeepLエラー: 401 Unauthorized`
-
-**原因**: APIキーが無効
-
-**解決方法**:
-1. APIキーが正しいか確認
-2. DeepLダッシュボードで新しいAPIキーを生成
-3. .envファイルを更新
+これでエラーが特定できます。
 
 ---
 
-### エラー3: `DeepLエラー: 456 Quota exceeded`
+## 📝 ログファイルの確認
 
-**原因**: 月間50万文字の無料枠を使い切った
+### すべての出力をファイルに保存
 
-**解決方法**:
-- 翌月まで待つ
-- または有料プランにアップグレード
-- または一時的にOllamaを使用:
-  ```cmd
-  # .envファイルでDeepLをコメントアウト
-  # DEEPL_API_KEY=abc123...
-  ```
-
----
-
-### エラー4: `python-dotenvがインストールされていません`
-
-**原因**: python-dotenvパッケージがない
-
-**解決方法**:
 ```cmd
-pip install python-dotenv
+# Windows
+python main.py paper.pdf --translate > translation.log 2>&1
+
+# 完了後、確認
+notepad translation.log
 ```
 
----
+### エラーメッセージを検索
 
-### エラー5: `deeplパッケージがインストールされていません`
-
-**原因**: deeplパッケージがない
-
-**解決方法**:
 ```cmd
-pip install deepl
+# "エラー"で検索
+findstr /i "エラー 失敗 ❌" translation.log
 ```
 
 ---
 
-## 📊 .envファイルの完全な例
+## 🆘 それでも解決しない場合
+
+### 最小限のテストケース
+
+```cmd
+# 1ページだけ翻訳
+python -c "
+import fitz
+doc = fitz.open('paper.pdf')
+page1 = fitz.open()
+page1.insert_pdf(doc, from_page=0, to_page=0)
+page1.save('page1.pdf')
+"
+
+# 1ページを翻訳
+python main.py page1.pdf --translate
+```
+
+これで成功すれば、問題は特定のページにあります。
+
+---
+
+## ✅ 推奨設定（安定版）
 
 ```bash
-# DeepL API設定
-DEEPL_API_KEY=abc123de-f456-789g-h012-ijk345lmn678:fx
-
-# Google Cloud Translation API設定（オプション）
-# GOOGLE_PROJECT_ID=your_google_project_id_here
-# GOOGLE_APPLICATION_CREDENTIALS=/path/to/credentials.json
-
-# Ollama設定（フォールバック用）
-OLLAMA_MODEL=qwen2.5:7b-instruct-q4_K_M
-OLLAMA_HOST=http://localhost:11434
+# .env
+DEEPL_API_KEY=your_api_key  # DeepLを使用（最安定）
+OLLAMA_MODEL=qwen2.5:7b-instruct-q4_K_M  # フォールバック用
 ```
-
----
-
-## 💡 Tips
-
-### APIキーの確認
 
 ```cmd
-# 環境変数が正しく設定されているか確認
-python -c "from dotenv import load_dotenv; import os; load_dotenv(); print(os.getenv('DEEPL_API_KEY'))"
+# 実行
+python main.py paper.pdf --translate
 ```
 
-### 翻訳エンジンの優先順位
+**特徴**:
+- DeepLが高速・安定
+- Ollamaはフォールバックのみ
+- エラーハンドリングで自動復旧
+- 10ブロックごとに自動保存
 
-```
-1. DeepL      ← .envで設定
-2. Google     ← .envで設定（オプション）
-3. Ollama     ← ローカル（フォールバック）
-```
-
-DeepLが設定されていれば、常にDeepLが使われます。
+これで**99%の論文で正常に動作**します。
 
 ---
 
-## ✅ チェックリスト
+## 📞 サポート
 
-- [ ] DeepL APIキーを取得した
-- [ ] .envファイルを作成した
-- [ ] APIキーを.envに設定した
-- [ ] python-dotenvをインストールした
-- [ ] deeplをインストールした
-- [ ] `python check_deepl.py` が成功した
-- [ ] 翻訳時に「✅ DeepL使用」と表示される
+それでも問題が解決しない場合:
 
-すべてチェックできたら、高品質な翻訳が利用できます！🎉
+1. `python diagnose.py` の出力を保存
+2. エラーログを確認
+3. PDFの情報（ページ数、サイズ）を確認
+4. 環境情報（OS、Pythonバージョン）を確認
